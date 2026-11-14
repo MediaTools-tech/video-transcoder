@@ -31,9 +31,10 @@ class SharpeningTest(unittest.TestCase):
     def test_labels_cover_every_filter(self):
         self.assertEqual(set(SHARPENING_LABELS), set(SHARPENING_FILTERS))
 
-    def test_labels_describe_filter_types(self):
-        self.assertIn("Unsharp", SHARPENING_LABELS["light"])
-        self.assertIn("Unsharp", SHARPENING_LABELS["strong"])
+    def test_labels_match_display_options(self):
+        self.assertEqual(SHARPENING_LABELS["light"], "Light")
+        self.assertEqual(SHARPENING_LABELS["medium"], "Medium")
+        self.assertEqual(SHARPENING_LABELS["strong"], "Strong")
         self.assertIn("CAS", SHARPENING_LABELS["adaptive"])
 
 

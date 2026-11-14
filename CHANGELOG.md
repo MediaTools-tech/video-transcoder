@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added focused FFmpeg tool, CLI, and API tests.
 
 ### Changed
-- Sharpening labels now identify the actual filters: Light/Medium/Strong use
-  `unsharp`, while Adaptive uses `cas`.
+- Sharpening remains None/Light/Medium/Strong/Adaptive; the user guide now
+  documents that Light/Medium/Strong use `unsharp` and Adaptive uses `cas`.
 - Switched the Docker runtime to Alpine with Alpine's FFmpeg package, reducing
   the image size substantially while keeping the existing API and web UI.
 - The Docker web UI now hides **Cancel Job** after a job finishes and offers
