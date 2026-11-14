@@ -7,7 +7,7 @@ formats.
 
 ## Quick start
 
-The workflow publishes `ghcr.io/<owner>/video-transcoder` and, when
+The workflow publishes `ghcr.io/baladockerbytes/video-transcoder` and, when
 `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` are configured, the same image on Docker
 Hub. Branch pushes get branch and commit tags; `main` also gets `latest` and a
 version tag. A newly created GHCR package is private by default; change its
@@ -16,7 +16,7 @@ visibility in the package settings if anonymous pulls are required.
 Pull the published image:
 
 ```bash
-docker pull ghcr.io/OWNER/video-transcoder:latest
+docker pull docker pull baladockerbytes/video-transcoder:latest
 ```
 
 Run it with persistent storage:
@@ -25,7 +25,7 @@ Run it with persistent storage:
 mkdir -p storage/uploads storage/outputs storage/temp
 docker run --rm -p 8000:8000 \
   -v "$(pwd)/storage:/storage" \
-  ghcr.io/OWNER/video-transcoder:latest
+  baladockerbytes/video-transcoder:latest
 ```
 
 Open <http://localhost:8000>. API documentation is at
