@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+*.spec
+
+# Runtime data and bundled binaries
+bin/
+data/
+transcoded/
+
+.DS_Store
+.venv-win
+temp_local
+docker/video-transcoder/.env
+docker/video-transcoder/storage/
+code-review*
+PRD.md
+AGENTS.md
+.editorconfig
+
+# Local API storage (Docker uses /storage via env overrides)
+/storage/
+
+# Local environment/secrets
+.env
+.env.*

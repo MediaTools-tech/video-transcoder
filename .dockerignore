@@ -1,0 +1,24 @@
+.git
+.github
+.venv
+.venv-win
+bin
+build
+data
+dist
+temp_local
+transcoded
+**/__pycache__
+**/*.py[cod]
+*.spec
+.env
+docker/video-transcoder/.env
+docker/video-transcoder/storage
+tests
+docs
+code-review*
+PRD.md
+AGENTS.md
+
+# Local API storage
+storage

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-transcoder"
+version = "1.0.0"
+description = "Cross-platform desktop application for batch video transcoding with FFmpeg"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Bala" }]
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+windows = [
+    "winshell>=0.6; platform_system == 'Windows'",
+    "pywin32>=306; platform_system == 'Windows'",
+]
+api = [
+    "aiofiles>=23.2",
+    "fastapi>=0.115,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.3,<3",
+    "python-multipart>=0.0.9",
+    "uvicorn[standard]>=0.30,<1",
+]
+dev = [
+    "httpx>=0.27",
+    "pyinstaller>=6.22",
+]
+
+[project.scripts]
+video-transcoder = "video_transcoder.app.launch:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"video_transcoder.api" = [
+    "frontend/*.html",
+    "frontend/css/*.css",
+    "frontend/js/*.js",
+]
+
+[tool.setuptools.data-files]
+"share/video-transcoder/assets" = ["assets/*"]
