@@ -191,7 +191,7 @@ class VideoTranscoderApp:
         if messagebox.askyesno("Check for FFmpeg Updates", prompt_msg):
             print("[Auto-Update] User accepted FFmpeg update. Starting download...")
             self.settings.set("last_ffmpeg_update_check", current_time)
-            self.prompt_ffmpeg_download()
+            self._begin_ffmpeg_download()
         else:
             print("[Auto-Update] User declined FFmpeg update.")
             self.settings.set("last_ffmpeg_update_check", current_time)
@@ -757,10 +757,10 @@ class VideoTranscoderApp:
                 for job_id in job_ids:
                     try:
                         self.root.after_cancel(job_id)
-                    except:
-                        pass
-            except:
-                pass
+                    except Exception as inner_error:
+                        print(f"Could not cancel after() job {job_id}: {inner_error}")
+            except Exception as outer_error:
+                print(f"Could not enumerate after() jobs: {outer_error}")
 
     def _on_auto_update_toggle(self):
         self.settings.set("auto_update", self.auto_update_var.get())
@@ -802,10 +802,13 @@ class VideoTranscoderApp:
             loaded_count = 0
             with open(queue_file, "r", encoding="utf-8") as f:
                 for line in f:
-                    parts = line.strip().split("|")
-                    if len(parts) >= 2:
-                        path, status = parts[0], parts[1]
-                        
+                    parts = line.strip().rsplit("|", 1)
+                    if len(parts) == 2:
+                        path, status = parts
+                        path = path.strip()
+                        if not path:
+                            continue
+
                         # Only reload Pending, Paused, or Error files
                         if status.lower() in ["done", "cancelled"]:
                             continue
@@ -828,11 +831,15 @@ class VideoTranscoderApp:
 
     def prompt_ffmpeg_download(self):
         if messagebox.askyesno("FFmpeg Missing", "FFmpeg is required for transcoding. Would you like to download it now?"):
-            self.start_btn.config(state=tk.DISABLED)
-            self.progress_var.set(0)
-            threading.Thread(target=self._download_ffmpeg_thread, daemon=True).start()
+            self._begin_ffmpeg_download()
         else:
             self.status_var.set("Ready")
+
+    def _begin_ffmpeg_download(self):
+        """Start the FFmpeg download worker without a second prompt."""
+        self.start_btn.config(state=tk.DISABLED)
+        self.progress_var.set(0)
+        threading.Thread(target=self._download_ffmpeg_thread, daemon=True).start()
 
     def _download_ffmpeg_thread(self):
         try:
@@ -935,7 +942,10 @@ class VideoTranscoderApp:
 
                 self._post_ui(on_finished)
 
-        self.service.start_batch(files, self.out_dir_var.get(), options, ui_callback)
+        thread = self.service.start_batch(files, self.out_dir_var.get(), options, ui_callback)
+        if thread is None:
+            messagebox.showinfo("Batch Active", "A transcoding batch is already in progress.")
+            self._finished()
 
     def pause_transcoding(self):
         self.service.pause()

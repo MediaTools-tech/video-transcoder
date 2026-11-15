@@ -1,7 +1,9 @@
 import json
 import ntpath
 import os
+import shutil
 import sys
+import threading
 from pathlib import Path
 from typing import Dict, Any
 
@@ -32,8 +34,10 @@ class SettingsManager:
         return cls._instance
 
     def _initialize(self):
+        self._save_lock = threading.RLock()
         self.dynamic_paths = self._calculate_dynamic_paths()
         self.settings_file = self._get_settings_path()
+        self._migrate_legacy_data()
         self.current_settings = self._load_settings()
         
         # Ensure path defaults, replacing paths produced on a different OS.
@@ -50,26 +54,28 @@ class SettingsManager:
         """Copy bundled bin/assets to the storage directory on first run"""
         if not getattr(sys, "frozen", False):
             return
-            
-        import shutil
+
         bundle_root = Path(sys._MEIPASS)
         storage_root = Path(self.get("base_dir"))
-        
+
         # We only want to copy if the destination doesn't exist or is empty
         for folder in ["bin", "data", "assets"]:
             src = bundle_root / folder
             if not src.exists(): # Try _internal fallback for modern PyInstaller
                 src = bundle_root / "_internal" / folder
-                
-            if src.exists():
-                dst = storage_root / folder
-                if not dst.exists() or not os.listdir(str(dst)):
-                    os.makedirs(str(dst), exist_ok=True)
-                    for item in os.listdir(str(src)):
-                        s = src / item
-                        d = dst / item
-                        if s.is_file():
-                            shutil.copy2(str(s), str(d))
+
+            if not src.exists():
+                continue
+
+            dst = storage_root / folder
+            if dst.exists() and os.listdir(str(dst)):
+                # Never overwrite user data; keep what's already there.
+                continue
+
+            try:
+                shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+            except OSError as e:
+                print(f"Could not extract bundled folder '{folder}': {e}")
 
     def _get_bundle_resource(self, relative_path: str) -> Path:
         """Find a read-only bundled resource from source, PyInstaller, or pip installs."""
@@ -173,7 +179,8 @@ class SettingsManager:
     def get_persistent_data_dir(self):
         app_name = "Video Transcoder"
         if sys.platform == "win32":
-            data_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "MediaTools" / app_name
+            local_app_data = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+            data_dir = Path(local_app_data) / "MediaTools" / app_name
         elif sys.platform == "darwin":
             data_dir = Path.home() / "Library" / "Application Support" / "MediaTools" / app_name
         else:
@@ -183,6 +190,49 @@ class SettingsManager:
 
     def _get_settings_path(self):
         return self._get_storage_dir() / "data" / "settings.json"
+
+    def _migrate_legacy_data(self):
+        """One-time migration from the pre-relocation storage layout.
+
+        Frozen builds and non-editable installs used to resolve the storage
+        directory to the install/source root (``parents[3]`` of this file).
+        Copy settings, the queue, and any downloaded FFmpeg binaries into the
+        new per-user directory when they are missing there, so upgrading
+        users do not silently lose their data.
+        """
+        storage_dir = self._get_storage_dir()
+        source_root = self._get_source_root()
+        if storage_dir == source_root:
+            return  # Source checkout: nothing moved, nothing to migrate.
+
+        candidates = [source_root]
+        if getattr(sys, "frozen", False):
+            # Onedir installs: legacy data lived next to the executable.
+            candidates.append(Path(sys.executable).resolve().parent)
+
+        storage = Path(storage_dir)
+        for base in candidates:
+            for relative in ("data/settings.json", "data/queue.txt"):
+                legacy_file = base / relative
+                new_file = storage / relative
+                if legacy_file.is_file() and not new_file.exists():
+                    try:
+                        new_file.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(legacy_file), str(new_file))
+                        print(f"Migrated {relative} to {new_file}")
+                    except OSError as e:
+                        print(f"Could not migrate {legacy_file}: {e}")
+
+            for binary in ("bin/ffmpeg", "bin/ffprobe", "bin/ffmpeg.exe", "bin/ffprobe.exe"):
+                legacy_bin = base / binary
+                new_bin = storage / binary
+                if legacy_bin.is_file() and not new_bin.exists():
+                    try:
+                        new_bin.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(legacy_bin), str(new_bin))
+                        print(f"Migrated {binary} to {new_bin}")
+                    except OSError as e:
+                        print(f"Could not migrate {legacy_bin}: {e}")
 
     def _load_settings(self) -> Dict[str, Any]:
         """Load settings and filter out irrelevant/junk keys"""
@@ -200,24 +250,46 @@ class SettingsManager:
                 return merged
         except Exception as e:
             print(f"Error loading settings: {e}")
+            # Keep the unreadable file for recovery instead of silently
+            # overwriting it with factory defaults on the next save.
+            try:
+                if self.settings_file.exists():
+                    backup = self.settings_file.with_name(self.settings_file.name + ".bak")
+                    shutil.copy2(str(self.settings_file), str(backup))
+                    print(f"Backed up unreadable settings to {backup}")
+            except OSError as backup_error:
+                print(f"Could not back up unreadable settings: {backup_error}")
         return self._default_settings.copy()
 
     def save_settings(self):
+        temp_file = self.settings_file.with_name(self.settings_file.name + ".tmp")
         try:
             self.settings_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.settings_file, "w", encoding="utf-8") as f:
-                json.dump(self.current_settings, f, indent=4)
+            with self._save_lock:
+                # Write to a temp file and atomically replace so a crash or a
+                # concurrent reader never sees a half-written settings.json.
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    json.dump(self.current_settings, f, indent=4)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(temp_file, self.settings_file)
             return True
         except Exception as e:
             print(f"Error saving settings: {e}")
+            try:
+                temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
             return False
 
     def get(self, key: str, default: Any = None) -> Any:
-        return self.current_settings.get(key, default)
+        with self._save_lock:
+            return self.current_settings.get(key, default)
 
     def set(self, key: str, value: Any):
-        self.current_settings[key] = value
-        self.save_settings()
+        with self._save_lock:
+            self.current_settings[key] = value
+            self.save_settings()
 
     def _ensure_directories(self):
         for path_key in ["downloads_dir", "data_dir", "bin_dir"]:

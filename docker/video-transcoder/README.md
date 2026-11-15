@@ -16,7 +16,7 @@ visibility in the package settings if anonymous pulls are required.
 Pull the published image:
 
 ```bash
-docker pull docker pull baladockerbytes/video-transcoder:latest
+docker pull baladockerbytes/video-transcoder:latest
 ```
 
 Run it with persistent storage:

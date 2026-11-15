@@ -45,7 +45,7 @@ case "$(uname -s)" in
         PYTHON_CMD="python3"
         SEP=":"
         EXE_NAME="mt-vtr"
-        APP_ICON="$ASSETS_DIR/Logo_128x128.ico"
+        APP_ICON="$ASSETS_DIR/Logo_32x32.png"
         CONSOLE_OPTS="--console"
         EXTRA_IMPORTS=""
         ;;

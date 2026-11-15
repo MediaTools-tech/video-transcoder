@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import platform
 import logging
@@ -54,63 +55,77 @@ class ShortcutCreator:
             messagebox.showerror("Error", f"Could not create shortcut: {e}")
             return False
 
-    def _find_project_root(self, current_path):
-        """Find the project root by looking for common markers"""
-        current = Path(current_path).absolute()
+    def _get_data_dir(self):
+        """Return the app's writable data directory (or a fallback)."""
+        if self.settings_manager:
+            try:
+                configured = self.settings_manager.get("data_dir")
+                if configured:
+                    return Path(configured)
+            except Exception as e:
+                self.logger.warning(f"Could not read data_dir from settings: {e}")
+        return Path.home() / ".video-transcoder"
 
-        markers = [
-            "src",
-            "setup.py",
-        ]
+    def _create_dev_wrapper(self):
+        """Create (or reuse) a launcher script that runs the app via `python -m video_transcoder`.
 
-        # Go up directories until we find a project root marker
-        for parent in [current] + list(current.parents):
-            for marker in markers:
-                if (parent / marker).exists():
-                    return parent
+        Development shortcuts cannot point at a bare `__main__.py` — that
+        opens the source file instead of launching the app. The wrapper sets
+        PYTHONPATH to the source tree so the module runs correctly.
+        """
+        source_root = Path(__file__).resolve().parents[2]  # .../src
+        repo_root = source_root.parent
+        wrapper_dir = self._get_data_dir() / "launchers"
+        wrapper_dir.mkdir(parents=True, exist_ok=True)
 
-        return current
+        if platform.system() == "Windows":
+            wrapper = wrapper_dir / "run-video-transcoder.bat"
+            python_exe = Path(sys.executable)
+            pythonw = python_exe.with_name("pythonw.exe")
+            interpreter = str(pythonw if pythonw.exists() else python_exe)
+            wrapper.write_text(
+                "@echo off\n"
+                f'set "PYTHONPATH={source_root}"\n'
+                f'cd /d "{repo_root}"\n'
+                f'start "" "{interpreter}" -m video_transcoder\n',
+                encoding="utf-8",
+            )
+        else:
+            wrapper = wrapper_dir / "run-video-transcoder.sh"
+            wrapper.write_text(
+                "#!/bin/bash\n"
+                f'export PYTHONPATH="{source_root}"\n'
+                f'cd "{repo_root}"\n'
+                f'exec "{sys.executable}" -m video_transcoder "$@"\n',
+                encoding="utf-8",
+            )
+            os.chmod(wrapper, 0o755)
+        return wrapper
 
     def _get_executable_and_icon_paths(self):
         """Get executable path and platform-appropriate icon path"""
+        system = platform.system()
+        if system == "Windows":
+            icon_name = "Logo_128x128.ico"
+        elif system == "Darwin":
+            icon_name = "Logo_128x128.icns"
+        else:  # Linux
+            icon_name = "Logo_128x128.png"
+
         if getattr(sys, "frozen", False):
             # PyInstaller executable
             exe_path = sys.executable
-            assets_dir = self.settings_manager._get_bundle_resource("assets")
-
-            system = platform.system()
-            if system == "Windows":
-                icon_path = assets_dir / "Logo_128x128.ico"
-            elif system == "Darwin":
-                icon_path = assets_dir / "Logo_128x128.icns"
-            else:  # Linux
-                icon_path = assets_dir / "Logo_128x128.png"
+            if self.settings_manager:
+                assets_dir = self.settings_manager._get_bundle_resource("assets")
+            else:
+                assets_dir = None
+                self.logger.warning("No settings manager; shortcut will use the default icon.")
         else:
-            # Development mode
-            exe_path = Path(sys.argv[0]).absolute()
-            project_root = self._find_project_root(exe_path)
+            # Development mode: point at a generated wrapper, not at __main__.py
+            exe_path = self._create_dev_wrapper()
+            assets_dir = Path(__file__).resolve().parents[3] / "assets"
 
-            possible_asset_dirs = [
-                project_root / "assets",
-            ]
-
-            assets_dir = None
-            for asset_dir in possible_asset_dirs:
-                if asset_dir.exists():
-                    assets_dir = asset_dir
-                    break
-
-            if not assets_dir:
-                assets_dir = project_root
-
-            system = platform.system()
-            if system == "Windows":
-                icon_path = assets_dir / "Logo_128x128.ico"
-            elif system == "Darwin":
-                icon_path = assets_dir / "Logo_128x128.icns"
-            else:  # Linux
-                icon_path = assets_dir / "Logo_128x128.png"
-
+        icon_path = assets_dir / icon_name if assets_dir else None
         return str(exe_path), icon_path
 
     def _create_windows_shortcut(self):
@@ -128,7 +143,8 @@ class ShortcutCreator:
 
             try:
                 desktop = winshell.desktop()
-            except:
+            except Exception as e:
+                self.logger.warning(f"winshell.desktop() failed, falling back to ~/Desktop: {e}")
                 desktop = str(Path.home() / "Desktop")
 
             shortcut_path = Path(desktop) / f"{self.app_name}.lnk"
@@ -191,7 +207,7 @@ Name={self.app_name}
 Comment=High-quality video transcoding
 Exec="{exe_path}"
 Path={Path(exe_path).parent}
-Icon={icon_path if icon_path.exists() else ""}
+Icon={icon_path if icon_path and icon_path.exists() else ""}
 Terminal=false
 StartupNotify=true
 Categories=AudioVideo;Video;
@@ -207,19 +223,69 @@ Categories=AudioVideo;Video;
             return False
 
     def _create_mac_shortcut(self):
-        """macOS shortcut creation"""
+        """macOS shortcut creation: minimal .app bundle with the bundled icon.
+
+        A plain `.command` file cannot carry a custom icon. Building a tiny
+        `.app` wrapper (launcher script + Info.plist + Logo_128x128.icns)
+        gives the shortcut the app's icon, per the follow-up decision.
+        """
         try:
             desktop = Path.home() / "Desktop"
             exe_path, icon_path = self._get_executable_and_icon_paths()
 
-            script_content = f"""#!/bin/bash
-cd "{Path(exe_path).parent}"
-./"{Path(exe_path).name}"
-"""
-            script_path = desktop / f"{self.app_name}.command"
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(script_content)
-            os.chmod(script_path, 0o755)
+            app_path = desktop / f"{self.app_name}.app"
+            contents = app_path / "Contents"
+            macos_dir = contents / "MacOS"
+            resources_dir = contents / "Resources"
+            macos_dir.mkdir(parents=True, exist_ok=True)
+            resources_dir.mkdir(parents=True, exist_ok=True)
+
+            launcher = macos_dir / "launcher"
+            launcher.write_text(
+                "#!/bin/bash\n"
+                f'exec "{exe_path}" "$@"\n',
+                encoding="utf-8",
+            )
+            os.chmod(launcher, 0o755)
+
+            bundle_icon = ""
+            if (
+                icon_path
+                and Path(icon_path).exists()
+                and str(icon_path).lower().endswith(".icns")
+            ):
+                shutil.copy2(str(icon_path), str(resources_dir / "AppIcon.icns"))
+                bundle_icon = "AppIcon"
+            else:
+                self.logger.warning("No .icns icon found; the .app will use the default icon.")
+
+            plist_lines = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+                '<plist version="1.0">',
+                '<dict>',
+                '\t<key>CFBundleName</key>',
+                f'\t<string>{self.app_name}</string>',
+                '\t<key>CFBundleDisplayName</key>',
+                f'\t<string>{self.app_name}</string>',
+                '\t<key>CFBundleExecutable</key>',
+                '\t<string>launcher</string>',
+                '\t<key>CFBundleIdentifier</key>',
+                '\t<string>com.mediatools.videotranscoder</string>',
+                '\t<key>CFBundleVersion</key>',
+                f'\t<string>{__version__}</string>',
+                '\t<key>CFBundleShortVersionString</key>',
+                f'\t<string>{__version__}</string>',
+                '\t<key>CFBundlePackageType</key>',
+                '\t<string>APPL</string>',
+            ]
+            if bundle_icon:
+                plist_lines += [
+                    '\t<key>CFBundleIconFile</key>',
+                    f'\t<string>{bundle_icon}</string>',
+                ]
+            plist_lines += ['</dict>', '</plist>', '']
+            (contents / "Info.plist").write_text("\n".join(plist_lines), encoding="utf-8")
 
             messagebox.showinfo("Success", "Desktop shortcut created!")
             return True
@@ -237,7 +303,10 @@ cd "{Path(exe_path).parent}"
                 desktop / f"{self.app_name}.bat"
             ).exists()
         elif system == "Darwin":
-            return (desktop / f"{self.app_name}.command").exists()
+            return (
+                (desktop / f"{self.app_name}.app").exists()
+                or (desktop / f"{self.app_name}.command").exists()
+            )
         elif system == "Linux":
             return (
                 desktop / f"{self.app_name.replace(' ', '-').lower()}.desktop"
@@ -249,10 +318,7 @@ cd "{Path(exe_path).parent}"
         if self.shortcut_exists():
             return
 
-        if self.settings_manager:
-            data_dir = Path(self.settings_manager.get("data_dir", Path.home() / ".video-transcoder"))
-        else:
-            data_dir = Path.home() / ".video-transcoder"
+        data_dir = self._get_data_dir()
 
         first_run_file = data_dir / "transcoder_first_run.flag"
 

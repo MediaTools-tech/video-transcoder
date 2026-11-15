@@ -237,6 +237,7 @@ def run_cli(argv=None):
         elif kind == "finished":
             finish_reason[0] = data
 
+    thread = None
     try:
         thread = service.start_batch(inputs, str(output_dir), options, ui_callback)
         if thread is None:
@@ -246,6 +247,13 @@ def run_cli(argv=None):
     except KeyboardInterrupt:
         print("Interrupted. Stopping FFmpeg...", file=sys.stderr)
         service.stop()
+        # Let the engine notice stop_event and terminate its own subprocess so
+        # partial files are renamed correctly; fall back to a hard terminate.
+        if thread is not None:
+            thread.join(timeout=10)
+            if thread.is_alive():
+                service.engine.terminate_active_process()
+                thread.join(timeout=5)
         return 130
 
     if finish_reason[0] != "Done":

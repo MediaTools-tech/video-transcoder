@@ -75,23 +75,23 @@ class FFmpegTool:
                 
             subprocess.run(["ffmpeg", "-version"], **process_kwargs)
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
             return False
 
     def get_ffmpeg_latest_url(self):
         """Return the download URL for the current platform"""
         return self.FFMPEG_DOWNLOAD_URLS.get(self.current_platform)
 
-    def _normalize_version(self, ver_str):
-        """Helper to extract a comparable version number (e.g., '8.0') from various strings"""
+    def _version_tuple(self, ver_str):
+        """Extract a comparable version tuple (e.g. (8, 0)) from various strings."""
         if not ver_str:
-            return ""
-        # Handle cases like "ffmpeg version 8.0-essentials_build..."
-        # We want the '8.0' part.
-        match = re.search(r'(\d+\.\d+)', ver_str)
-        if match:
-            return match.group(1)
-        return ver_str.split('-')[0].strip().lower()
+            return None
+        # Handle cases like "ffmpeg version 8.0-essentials_build..." by taking
+        # the first dotted-numeric group.
+        match = re.search(r'(\d+)\.(\d+)(?:\.(\d+))?', str(ver_str))
+        if not match:
+            return None
+        return tuple(int(part) if part is not None else 0 for part in match.groups())
 
     def get_local_version(self):
         """Get the version of the local FFmpeg binary"""
@@ -134,14 +134,22 @@ class FFmpegTool:
         local_value = local_version if local_version is not None else self.get_local_version()
         remote_value = remote_version if remote_version is not None else self.get_remote_version()
 
-        local = self._normalize_version(local_value)
-        remote = self._normalize_version(remote_value)
-
-        if not remote:
+        remote = self._version_tuple(remote_value)
+        if remote is None:
+            # No parseable remote version (e.g. the unversioned Linux URL):
+            # skip the update prompt instead of prompting forever.
             return True
-        if not local or local == "unknown":
+
+        if not local_value or str(local_value).strip().lower() == "unknown":
             return False
-        return remote in local or local == remote
+        local = self._version_tuple(local_value)
+        if local is None:
+            return False
+
+        length = max(len(local), len(remote))
+        local_padded = local + (0,) * (length - len(local))
+        remote_padded = remote + (0,) * (length - len(remote))
+        return local_padded >= remote_padded
 
     def _safe_replace(self, src_path, dst_path):
         """Safely replace a file, handling 'file in use' errors on Windows with multiple retries."""
@@ -270,10 +278,38 @@ class FFmpegTool:
                 raise RuntimeError("Downloaded archive does not contain a valid FFprobe binary")
 
             # 3. Move files into place only after both expected binaries are valid.
-            if not self._safe_replace(staged_ffmpeg, ffmpeg_final):
-                raise RuntimeError("Could not replace the FFmpeg binary")
-            if not self._safe_replace(staged_ffprobe, ffprobe_final):
-                raise RuntimeError("Could not replace the FFprobe binary")
+            # Keep a backup of the previous FFmpeg binary so that a failed
+            # FFprobe replacement can roll it back and avoid a mixed-version
+            # pair.
+            ffmpeg_existed = Path(ffmpeg_final).exists()
+            ffmpeg_backup = None
+            if ffmpeg_existed:
+                ffmpeg_backup = temp_extract / (ffmpeg_name + ".pre-update")
+                shutil.copy2(str(ffmpeg_final), str(ffmpeg_backup))
+
+            try:
+                if not self._safe_replace(staged_ffmpeg, ffmpeg_final):
+                    raise RuntimeError("Could not replace the FFmpeg binary")
+                if not self._safe_replace(staged_ffprobe, ffprobe_final):
+                    raise RuntimeError("Could not replace the FFprobe binary")
+            except Exception:
+                restored = False
+                if ffmpeg_backup is not None and ffmpeg_backup.exists():
+                    try:
+                        restored = self._safe_replace(ffmpeg_backup, ffmpeg_final)
+                        if restored:
+                            print("Restored the previous FFmpeg binary after a failed update.")
+                    except OSError as restore_error:
+                        print(f"Could not restore the previous FFmpeg binary: {restore_error}")
+
+                if not restored and not ffmpeg_existed:
+                    # Fresh install: do not leave a new FFmpeg next to a
+                    # missing/old FFprobe if the second replacement failed.
+                    try:
+                        Path(ffmpeg_final).unlink(missing_ok=True)
+                    except OSError as cleanup_error:
+                        print(f"Could not remove the partial FFmpeg install: {cleanup_error}")
+                raise
 
             if self.current_platform != "Windows":
                 try:

@@ -57,7 +57,8 @@ class TranscoderService:
         self.pause_event.set()
 
     def cleanup(self):
-        """Signal pause and terminate any active engine subprocess for clean exit"""
+        """Signal stop and terminate any active engine subprocess for clean exit"""
+        self.stop_event.set()
         self.pause_event.set()
         self.engine.terminate_active_process()
 

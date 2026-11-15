@@ -42,7 +42,7 @@ case "$(uname -s)" in
         PLATFORM_UTIL="cleanup_files.sh"
         PYTHON_CMD="python3"
         SEP=":"  # Unix separator
-        APP_ICON="$ASSETS_DIR/Logo_128x128.ico"
+        APP_ICON="$ASSETS_DIR/Logo_32x32.png"
         CONSOLE_OPTS="--console"
         EXTRA_IMPORTS=""
         ;;

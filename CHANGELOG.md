@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed CRF value `0` being ignored by truthiness checks.
 - Fixed PyInstaller builds to bundle the existing `docs/UserGuide.md`
   instead of a missing PDF file.
+- Made settings writes atomic, backed up unreadable settings files, and
+  migrated legacy settings, queue, and FFmpeg binaries into relocated storage.
+- Hardened FFmpeg version ordering, executable availability checks, and update
+  rollback when an FFprobe replacement fails.
+- Fixed worker cleanup after EXIT, CLI Ctrl+C subprocess termination, queue
+  round-tripping for paths containing `|`, duplicate GUI batch starts, and
+  development/macOS shortcut launchers.
 - Removed duplicate engine assignments and unused imports/state.
 
 ## [1.0.1] - 2026-02-05
