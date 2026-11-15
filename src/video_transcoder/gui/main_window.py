@@ -854,12 +854,15 @@ class VideoTranscoderApp:
         except Exception as e:
             def show_error(error=e):
                 self.ffmpeg_status_lbl.config(text="FFmpeg: MISSING", foreground="red")
+                self.progress_var.set(0)
+                self.status_var.set("FFmpeg download failed.")
                 messagebox.showerror("Download Error", f"Failed to download FFmpeg: {error}")
                 self.start_btn.config(state=tk.NORMAL)
             self._post_ui(show_error)
 
     def _ffmpeg_ready(self):
         self.ffmpeg_status_lbl.config(text="FFmpeg: OK", foreground="green")
+        self.progress_var.set(0)
         self.status_var.set("FFmpeg ready.")
         self.start_btn.config(state=tk.NORMAL)
         # Update engine paths to use the newly downloaded local binaries
