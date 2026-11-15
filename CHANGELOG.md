@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server-side upload and output; browser downloads are untouched.
 - PyInstaller builds now default output to `transcoded` next to the
   executable when writable, with a per-user fallback.
+- Marked portable onedir builds keep settings, queue state, and downloaded
+  FFmpeg binaries inside `_internal`, avoiding AppData/Local. The build script
+  adds `_internal/portable.flag` to the portable folder.
 - Refactored the repository from a monorepo app/library split into a standalone
   single-app layout under `src/video_transcoder/`.
 - Replaced all `mediatools.*` imports with `video_transcoder.*`.

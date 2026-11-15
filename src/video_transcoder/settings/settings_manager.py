@@ -9,6 +9,7 @@ from typing import Dict, Any
 
 class SettingsManager:
     _instance = None
+    PORTABLE_MARKER = "portable.flag"
 
     _default_settings = {
         "bin_dir": "",
@@ -52,7 +53,7 @@ class SettingsManager:
 
     def _extract_bundled_resources(self):
         """Copy bundled bin/assets to the storage directory on first run"""
-        if not getattr(sys, "frozen", False):
+        if not getattr(sys, "frozen", False) or self._is_portable_mode():
             return
 
         bundle_root = Path(sys._MEIPASS)
@@ -125,12 +126,31 @@ class SettingsManager:
         root = self._get_source_root()
         return (root / "pyproject.toml").is_file() and (root / "src" / "video_transcoder").is_dir()
 
+    def _get_portable_storage_dir(self) -> Path | None:
+        """Return ``_internal`` for a marked onedir portable build."""
+        if not getattr(sys, "frozen", False):
+            return None
+
+        internal = Path(sys.executable).resolve().parent / "_internal"
+        if (internal / self.PORTABLE_MARKER).is_file():
+            return internal
+        return None
+
+    def _is_portable_mode(self) -> bool:
+        return self._get_portable_storage_dir() is not None
+
     def _get_storage_dir(self) -> Path:
         """Return the writable app directory for the current runtime mode.
 
-        Frozen builds and non-editable installs use the per-user data directory.
-        A source checkout keeps runtime state at the repo root for development.
+        A marked portable onedir build keeps state inside its bundled
+        ``_internal`` directory. Other frozen builds and non-editable installs
+        use the per-user data directory. A source checkout keeps runtime state
+        at the repo root for development.
         """
+        portable_dir = self._get_portable_storage_dir()
+        if portable_dir is not None:
+            return portable_dir
+
         if getattr(sys, "frozen", False) or not self._is_source_checkout():
             return self.get_persistent_data_dir()
         return self._get_source_root()
@@ -197,7 +217,7 @@ class SettingsManager:
         Frozen builds and non-editable installs used to resolve the storage
         directory to the install/source root (``parents[3]`` of this file).
         Copy settings, the queue, and any downloaded FFmpeg binaries into the
-        new per-user directory when they are missing there, so upgrading
+        current storage directory when they are missing there, so upgrading
         users do not silently lose their data.
         """
         storage_dir = self._get_storage_dir()

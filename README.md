@@ -108,12 +108,17 @@ instead of prompting.
 CLI transcoding uses factory defaults unless options override them; add
 `--use-saved-settings` to reuse the GUI's last-used codec/container/quality
 choices. The default output directory comes from the app settings. Packaged
-builds keep settings under the per-user data directory, but write outputs to a
-`transcoded` folder next to `mt-vtr` when that location is writable. Otherwise
-they fall back to the per-user directory, for example
-`%LOCALAPPDATA%\MediaTools\Video Transcoder\transcoded` on Windows or
+builds write outputs to a `transcoded` folder next to `mt-vtr` when that
+location is writable. Otherwise they fall back to the per-user directory, for
+example `%LOCALAPPDATA%\MediaTools\Video Transcoder\transcoded` on Windows or
 `~/.local/share/MediaTools/Video Transcoder/transcoded` on Linux. Choosing an
 output folder in the GUI overrides this default and is saved for later runs.
+
+The portable onedir folder is fully portable when `_internal/portable.flag`
+exists. In that mode settings, the queue, and downloaded FFmpeg binaries live
+under `_internal/data` and `_internal/bin`; no AppData/Local directory is
+created. The onefile executable does not use this mode because its `_internal`
+bundle is temporary, so it keeps settings in the per-user data directory.
 
 ## Docker / API
 

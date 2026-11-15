@@ -330,6 +330,7 @@ jobs:
 
             1. **mt-vtr-Windows-Portable.zip** - Portable folder (`--onedir`)
                - Contains `mt-vtr.exe` plus all dependencies
+               - Settings, queue, and FFmpeg stay inside `_internal` (no AppData)
                - Extract and run `mt-vtr.exe`
 
             2. **mt-vtr-Windows.exe** - Single executable (`--onefile`)
@@ -340,6 +341,7 @@ jobs:
 
             3. **mt-vtr-Linux-Portable.zip** - Portable folder (`--onedir`)
                - Contains the `mt-vtr` binary plus all dependencies
+               - Settings, queue, and FFmpeg stay inside `_internal` (no XDG data)
                - Extract and run `./mt-vtr`
 
             4. **mt-vtr-Linux** - Single executable (`--onefile`)

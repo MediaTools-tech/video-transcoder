@@ -91,5 +91,14 @@ $PYTHON_CMD -m PyInstaller \
   "$PKG_DIR/__main__.py"
 
 echo ""
+PORTABLE_DIR="$REPO_ROOT/dist/mt-vtr"
+if [ -d "$PORTABLE_DIR/_internal" ]; then
+  printf 'Portable mode: settings, queue, and FFmpeg are stored in this folder.\n' \
+    > "$PORTABLE_DIR/_internal/portable.flag"
+fi
+
 echo "✓ Build complete!"
 echo "Output: dist/mt-vtr/"
+if [ -f "$PORTABLE_DIR/_internal/portable.flag" ]; then
+  echo "Portable marker: dist/mt-vtr/_internal/portable.flag"
+fi

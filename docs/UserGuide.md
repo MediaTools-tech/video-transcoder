@@ -135,11 +135,15 @@ When **Auto Update FFmpeg** is enabled, the app checks for FFmpeg updates every 
 
 ### 7.2 Clear Data
 
-To reset the app to factory settings, delete the `settings.json` and `queue.txt` files from the per-user data folder:
+To reset the app to factory settings, delete the `settings.json` and `queue.txt` files from the data folder:
 
-- **Windows:** `%LOCALAPPDATA%\MediaTools\Video Transcoder\data`
-- **Linux:** `~/.local/share/MediaTools/Video Transcoder/data`
-- **macOS:** `~/Library/Application Support/MediaTools/Video Transcoder/data`
+- **Portable onedir build:** `<portable folder>/_internal/data`
+- **Windows installed:** `%LOCALAPPDATA%\MediaTools\Video Transcoder\data`
+- **Linux installed:** `~/.local/share/MediaTools/Video Transcoder/data`
+- **macOS installed:** `~/Library/Application Support/MediaTools/Video Transcoder/data`
+
+In portable mode, downloaded FFmpeg binaries are also kept in
+`<portable folder>/_internal/bin`.
 
 ### 7.3 Command-Line Mode
 

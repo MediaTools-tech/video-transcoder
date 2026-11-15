@@ -29,6 +29,140 @@ class SettingsPathTest(unittest.TestCase):
             self.assertTrue(output.is_dir())
 
 
+class PortableStorageTest(unittest.TestCase):
+    def _manager(self):
+        return object.__new__(SettingsManager)
+
+    def _portable_tree(self, tmp, onefile=False):
+        exe = Path(tmp) / "mt-vtr.exe"
+        exe.write_bytes(b"")
+        if onefile:
+            meipass = Path(tmp) / "onefile-temp"
+            meipass.mkdir()
+        else:
+            meipass = Path(tmp) / "_internal"
+            meipass.mkdir()
+        (meipass / SettingsManager.PORTABLE_MARKER).write_text(
+            "portable", encoding="utf-8"
+        )
+        return exe, meipass
+
+    def test_marked_onedir_uses_internal_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, internal = self._portable_tree(tmp)
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(internal), create=True
+            ):
+                self.assertEqual(manager._get_portable_storage_dir(), internal)
+                self.assertTrue(manager._is_portable_mode())
+                self.assertEqual(manager._get_storage_dir(), internal)
+
+    def test_unmarked_build_is_not_portable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, internal = self._portable_tree(tmp)
+            (internal / SettingsManager.PORTABLE_MARKER).unlink()
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(internal), create=True
+            ):
+                self.assertIsNone(manager._get_portable_storage_dir())
+
+    def test_marker_next_to_executable_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, internal = self._portable_tree(tmp)
+            (internal / SettingsManager.PORTABLE_MARKER).unlink()
+            (Path(tmp) / SettingsManager.PORTABLE_MARKER).write_text(
+                "portable", encoding="utf-8"
+            )
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(internal), create=True
+            ):
+                self.assertIsNone(manager._get_portable_storage_dir())
+
+    def test_onefile_temp_directory_is_not_used_for_portable_storage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, meipass = self._portable_tree(tmp, onefile=True)
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(meipass), create=True
+            ):
+                self.assertIsNone(manager._get_portable_storage_dir())
+
+    def test_portable_storage_does_not_create_appdata_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, internal = self._portable_tree(tmp)
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(internal), create=True
+            ), mock.patch.object(
+                manager,
+                "get_persistent_data_dir",
+                side_effect=AssertionError("AppData must not be used"),
+            ):
+                self.assertEqual(manager._get_storage_dir(), internal)
+
+    def test_portable_mode_skips_resource_extraction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, internal = self._portable_tree(tmp)
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(internal), create=True
+            ), mock.patch(
+                "video_transcoder.settings.settings_manager.shutil.copytree"
+            ) as copytree:
+                manager._extract_bundled_resources()
+                copytree.assert_not_called()
+
+    def test_initialize_writes_state_inside_internal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe, internal = self._portable_tree(tmp)
+            manager = self._manager()
+            with mock.patch.object(
+                sys, "frozen", True, create=True
+            ), mock.patch.object(
+                sys, "executable", str(exe)
+            ), mock.patch.object(
+                sys, "_MEIPASS", str(internal), create=True
+            ), mock.patch.object(
+                manager, "_get_source_root", return_value=Path(tmp)
+            ), mock.patch.object(
+                manager,
+                "get_persistent_data_dir",
+                side_effect=AssertionError("AppData must not be used"),
+            ):
+                manager._initialize()
+
+            self.assertTrue((internal / "data" / "settings.json").is_file())
+            self.assertTrue((internal / "bin").is_dir())
+            self.assertFalse((Path(tmp) / "data").exists())
+
+
 class SettingsPersistenceTest(unittest.TestCase):
     def _manager(self):
         manager = object.__new__(SettingsManager)
