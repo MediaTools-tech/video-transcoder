@@ -16,6 +16,7 @@ from video_transcoder.core.transcoder_engine import (
     CONTAINERS,
     SHARPENING_LABELS,
 )
+from video_transcoder.core.media_types import VIDEO_INPUT_FILE_TYPES, is_supported_video_path
 from video_transcoder.core.transcoder_service import TranscoderService
 from video_transcoder.ffmpeg.tool import FFmpegTool
 from video_transcoder.system.shortcut_creator import ShortcutCreator
@@ -588,10 +589,18 @@ class VideoTranscoderApp:
         return "none"
 
     def add_files(self):
-        files = filedialog.askopenfilenames(title="Select Video Files")
+        files = filedialog.askopenfilenames(
+            title="Select Video Files",
+            filetypes=VIDEO_INPUT_FILE_TYPES,
+        )
         existing_items = {self.tree.item(i)['values'][0]: i for i in self.tree.get_children()}
+        unsupported = []
         
         for f in files:
+            if not is_supported_video_path(f):
+                unsupported.append(Path(f).name)
+                continue
+
             if f in existing_items:
                 item_id = existing_items[f]
                 status = self.tree.item(item_id)['values'][1]
@@ -603,32 +612,41 @@ class VideoTranscoderApp:
             self.tree.insert("", tk.END, values=(f, "Pending"))
         self._save_queue_to_file()
 
+        if unsupported:
+            preview = ", ".join(unsupported[:5])
+            if len(unsupported) > 5:
+                preview += f", and {len(unsupported) - 5} more"
+            messagebox.showwarning(
+                "Unsupported Files",
+                f"Only video files are supported. Skipped: {preview}",
+            )
+
     def add_folder(self):
         folder = filedialog.askdirectory(title="Select Folder")
         if not folder: return
-        extensions = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv"}
         
         count = 0
         existing_items = {self.tree.item(i)['values'][0]: i for i in self.tree.get_children()}
         
         for root, dirs, files in os.walk(folder):
             for f in files:
-                if Path(f).suffix.lower() in extensions:
-                    path = str(Path(root) / f)
-                    if path in existing_items:
-                        item_id = existing_items[path]
-                        status = self.tree.item(item_id)['values'][1]
-                        if status.lower() == "done":
-                            # For folders, maybe we don't want to prompt for EVERY file?
-                            # Let's prompt once or just skip. The user said:
-                            # "If some video is present with done status but added again, prompt user"
-                            # I'll prompt for each unique file for now as it's safer.
-                            if messagebox.askyesno("File Present", f"'{Path(path).name}' is already marked as Done. Do you want to enqueue it again?"):
-                                self.tree.set(item_id, "status", "Pending")
-                        continue
+                path = str(Path(root) / f)
+                if not is_supported_video_path(path):
+                    continue
+                if path in existing_items:
+                    item_id = existing_items[path]
+                    status = self.tree.item(item_id)['values'][1]
+                    if status.lower() == "done":
+                        # For folders, maybe we don't want to prompt for EVERY file?
+                        # Let's prompt once or just skip. The user said:
+                        # "If some video is present with done status but added again, prompt user"
+                        # I'll prompt for each unique file for now as it's safer.
+                        if messagebox.askyesno("File Present", f"'{Path(path).name}' is already marked as Done. Do you want to enqueue it again?"):
+                            self.tree.set(item_id, "status", "Pending")
+                    continue
                         
-                    self.tree.insert("", tk.END, values=(path, "Pending"))
-                    count += 1
+                self.tree.insert("", tk.END, values=(path, "Pending"))
+                count += 1
             if not self.recursive_var.get(): break
         
         if count > 0:

@@ -598,7 +598,7 @@ function resetUpload() {
         elements.uploadArea.querySelector('.upload-content').innerHTML = `
             <span class="upload-icon">📁</span>
             <p>Click to select or drag and drop a video file</p>
-            <p class="upload-hint">Supported: MP4, MKV, AVI, WebM, MOV</p>
+            <p class="upload-hint">Supported: MP4, MKV, MOV, AVI, WebM, MPG/MPEG, WMV, FLV, OGV, RM/RMVB, GIF, WebP, and more</p>
         `;
     }
 

@@ -6,6 +6,11 @@ import platform
 import threading
 from typing import Dict, Tuple, Optional, Callable, Any
 
+from video_transcoder.core.media_types import (
+    format_supported_video_extensions,
+    is_supported_video_path,
+)
+
 # --- Constants & Presets ---
 
 VIDEO_CODECS = {
@@ -94,6 +99,15 @@ CONTAINER_CODEC_COMPATIBILITY = {
 }
 
 class TranscoderEngine:
+    RESOLUTION_BOUNDS = {
+        "480p": (854, 480),
+        "576p": (1024, 576),
+        "720p": (1280, 720),
+        "1080p": (1920, 1080),
+        "1440p": (2560, 1440),
+        "4k": (3840, 2160),
+    }
+
     def __init__(self, ffmpeg_path: str, ffprobe_path: str):
         self.ffmpeg_path = ffmpeg_path
         self.ffprobe_path = ffprobe_path
@@ -131,6 +145,19 @@ class TranscoderEngine:
         finally:
             with self._lock:
                 self.active_process = None
+
+    @staticmethod
+    def has_video_stream(video_info: Optional[Dict]) -> bool:
+        """Return whether probed metadata contains a real video stream."""
+        if not video_info:
+            return False
+        for stream in video_info.get("streams", []):
+            if stream.get("codec_type") != "video":
+                continue
+            if stream.get("disposition", {}).get("attached_pic"):
+                continue
+            return True
+        return False
 
     def get_video_duration(self, video_info: Dict) -> float:
         if not video_info:
@@ -178,38 +205,43 @@ class TranscoderEngine:
         return (1920, 1080)
 
     def get_nearest_standard_resolution(self, width: int, height: int) -> str:
-        if height <= 480: return "480p"
-        elif height <= 576: return "576p"
-        elif height <= 720: return "720p"
-        elif height <= 1080: return "1080p"
-        elif height <= 1440: return "1440p"
+        """Classify a source by its short side so portrait and landscape match."""
+        short_side = min(width, height) if width > 0 and height > 0 else 0
+        if short_side <= 480: return "480p"
+        elif short_side <= 576: return "576p"
+        elif short_side <= 720: return "720p"
+        elif short_side <= 1080: return "1080p"
+        elif short_side <= 1440: return "1440p"
         else: return "4k"
 
     def get_smart_scale_filter(self, input_width: int, input_height: int, target_resolution: str) -> Optional[str]:
-        resolution_bounds = {
-            "480p": (854, 480), "576p": (1024, 576), "720p": (1280, 720),
-            "1080p": (1920, 1080), "1440p": (2560, 1440), "4k": (3840, 2160)
-        }
-        if target_resolution not in resolution_bounds:
+        """Scale to the largest size that fits inside the target box.
+
+        The box follows the source orientation, so 720p is 1280x720 for
+        landscape and 720x1280 for portrait. Aspect ratio is preserved and
+        both dimensions are guaranteed not to exceed the box. Smaller sources
+        are upscaled to the box rather than rejected.
+        """
+        bounds = self.RESOLUTION_BOUNDS.get(target_resolution)
+        if bounds is None or input_width <= 0 or input_height <= 0:
             return None
-        target_width, target_height = resolution_bounds[target_resolution]
-        
-        # If input is smaller than target, don't upscale? Or do we? 
-        # The logic below scales down if input is larger. 
-        # If input is smaller, it might upscale. Let's keep original logic.
-        
-        input_aspect = input_width / input_height
-        target_aspect = target_width / target_height
-        
-        if input_aspect > target_aspect:
-             # Input is wider than target aspect (e.g. 21:9 input vs 16:9 target)
-             # Resize based on width? No, usually we limit by the smaller dimension to fit in the box.
-             # Wait, the logic: "scale=target_width:-2" sets width to targetW, and height auto-calculated (maintaining aspect).
-             return f"scale={target_width}:-2:flags=lanczos"
+
+        target_long, target_short = max(bounds), min(bounds)
+        if input_height > input_width:
+            max_width, max_height = target_short, target_long
         else:
-             # Input is taller/narrower (e.g. 4:3 input vs 16:9 target)
-             # Resize based on height
-             return f"scale=-2:{target_height}:flags=lanczos"
+            max_width, max_height = target_long, target_short
+
+        ratio = min(max_width / input_width, max_height / input_height)
+        out_width = max(2, int(round(input_width * ratio / 2)) * 2)
+        out_height = max(2, int(round(input_height * ratio / 2)) * 2)
+        out_width = min(out_width, max_width)
+        out_height = min(out_height, max_height)
+
+        if (out_width, out_height) == (input_width, input_height):
+            return None
+
+        return f"scale={out_width}:{out_height}:flags=lanczos"
 
     def get_best_audio_fallback(self, container: str) -> str:
         """Get the best audio codec fallback for a container."""
@@ -267,12 +299,21 @@ class TranscoderEngine:
         - sharpening: str (key in SHARPENING_FILTERS)
         - crf: int (18-28 usually)
         """
+        if not is_supported_video_path(input_path):
+            raise ValueError(
+                "Unsupported input extension. Supported video inputs: "
+                f"{format_supported_video_extensions()}"
+            )
+
         print(f"Starting transcoding: {input_path} -> {output_path}")
-        
+
         video_info = self.get_video_info(input_path)
         if not video_info:
             raise ValueError("Could not get video info. Is the file corrupted or FFprobe missing?")
-            
+
+        if not self.has_video_stream(video_info):
+            raise ValueError("No video stream found. Audio-only inputs are not supported.")
+
         duration = self.get_video_duration(video_info)
         width, height = self.get_video_resolution(video_info)
         input_channels = self.get_audio_channels(video_info)

@@ -7,8 +7,7 @@ import aiofiles
 from fastapi import UploadFile
 
 from video_transcoder.api.config import settings
-
-ALLOWED_SUFFIXES = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v"}
+from video_transcoder.core.media_types import VIDEO_INPUT_EXTENSIONS
 
 
 def ensure_storage_dirs() -> None:
@@ -57,8 +56,8 @@ async def save_upload_file(upload: UploadFile, job_id: str) -> Path:
     """Stream an upload to disk without loading the whole file into memory."""
     filename = upload.filename or ""
     suffix = Path(filename).suffix.lower()
-    if suffix not in ALLOWED_SUFFIXES:
-        allowed = ", ".join(sorted(ALLOWED_SUFFIXES))
+    if suffix not in VIDEO_INPUT_EXTENSIONS:
+        allowed = ", ".join(sorted(VIDEO_INPUT_EXTENSIONS))
         raise ValueError(f"Unsupported video extension. Allowed: {allowed}")
 
     settings.upload_dir.mkdir(parents=True, exist_ok=True)

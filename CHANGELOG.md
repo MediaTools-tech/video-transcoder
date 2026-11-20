@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added a shared video-only input policy across the GUI, CLI, API, and engine.
+  Supported inputs now include MPG/MPEG, RealMedia, OGV, GIF, WebP, APNG, and
+  other common video containers. Audio-only inputs are rejected after probing.
 - Added `576p` (1024x576) resolution support across the desktop GUI, CLI,
   API, and Docker web UI; the desktop resolution list now also exposes
   `1440p`.
@@ -40,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Marked portable onedir builds keep settings, queue state, and downloaded
   FFmpeg binaries inside `_internal`, avoiding AppData/Local. The build script
   adds `_internal/portable.flag` to the portable folder.
+- Resolution presets now use orientation-aware bounding boxes. Portrait 720p
+  is 720x1280, smaller sources are upscaled, and neither output side exceeds
+  the selected box.
 - Refactored the repository from a monorepo app/library split into a standalone
   single-app layout under `src/video_transcoder/`.
 - Replaced all `mediatools.*` imports with `video_transcoder.*`.

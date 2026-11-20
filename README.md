@@ -45,6 +45,7 @@ MediaTools Video Transcoder is a streamlined GUI for FFmpeg that simplifies comp
 ### Intelligent Workflow
 
 - **Batch Processing**: Add individual files or entire folders with recursive scanning.
+- **Video-Only Inputs**: Shared extension validation across the GUI, CLI, and API; audio-only files are rejected after probing.
 - **Queue Persistence**: Remembers your pending tasks and settings across sessions.
 - **Output Management**: Automatic collision handling (e.g., `_1`, `_2`) without overwriting original files.
 - **Interactive UI**: Drag-and-drop feeling with right-click queue management.

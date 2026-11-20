@@ -69,6 +69,14 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_rejects_audio_upload(self):
+        response = self.client.post(
+            "/api/upload",
+            files={"file": ("audio.mp3", b"not audio", "audio/mpeg")},
+            data={"options": "{}"},
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_rejects_invalid_options(self):
         response = self.client.post(
             "/api/upload",

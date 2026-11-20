@@ -3,6 +3,10 @@ import sys
 from pathlib import Path
 
 from video_transcoder import __version__
+from video_transcoder.core.media_types import (
+    format_supported_video_extensions,
+    is_supported_video_path,
+)
 from video_transcoder.core.transcoder_engine import (
     AUDIO_CODECS,
     CONTAINERS,
@@ -86,6 +90,14 @@ def _collect_inputs(args, parser):
         path = Path(value).expanduser()
         if not path.is_file():
             print(f"Error: input file not found or not a file: {value}", file=sys.stderr)
+            return None
+        if not is_supported_video_path(path):
+            print(
+                "Error: unsupported input extension for "
+                f"'{value}'. Supported video inputs: "
+                f"{format_supported_video_extensions()}",
+                file=sys.stderr,
+            )
             return None
         inputs.append(str(path))
     return inputs

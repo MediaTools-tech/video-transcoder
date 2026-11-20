@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from video_transcoder.api.models import JobResponse, TranscodingOptions
 from video_transcoder.api.services import storage
 from video_transcoder.api.services.job_manager import job_manager
-from video_transcoder.api.services.storage import ALLOWED_SUFFIXES
+from video_transcoder.core.media_types import VIDEO_INPUT_EXTENSIONS
 
 router = APIRouter()
 
@@ -17,13 +17,21 @@ _ALLOWED_CONTENT_TYPES = {
     "video/quicktime",
     "video/x-matroska",
     "video/webm",
+    "video/ogg",
+    "application/ogg",
+    "audio/ogg",
+    "image/gif",
+    "image/webp",
+    "image/apng",
+    "application/vnd.rn-realmedia",
+    "application/vnd.rn-realmedia-vbr",
     "application/octet-stream",
 }
 
 
 def _is_video_upload(upload: UploadFile) -> bool:
     suffix = Path(upload.filename or "").suffix.lower()
-    if suffix not in ALLOWED_SUFFIXES:
+    if suffix not in VIDEO_INPUT_EXTENSIONS:
         return False
     content_type = (upload.content_type or "").lower()
     return content_type in _ALLOWED_CONTENT_TYPES or content_type.startswith("video/")
@@ -35,7 +43,7 @@ async def upload_video(
     options: str = Form(...),
 ) -> JobResponse:
     if not _is_video_upload(file):
-        allowed = ", ".join(sorted(ALLOWED_SUFFIXES))
+        allowed = ", ".join(sorted(VIDEO_INPUT_EXTENSIONS))
         raise HTTPException(
             status_code=400,
             detail=f"Invalid video upload. Allowed extensions: {allowed}",

@@ -3,6 +3,7 @@ import io
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -36,6 +37,15 @@ class CliTest(unittest.TestCase):
 
         self.assertEqual(result, 1)
         self.assertIn("input file not found", stderr.getvalue())
+
+    def test_rejects_audio_input_extension(self):
+        stderr = io.StringIO()
+        with tempfile.NamedTemporaryFile(suffix=".mp3") as audio:
+            with contextlib.redirect_stderr(stderr):
+                result = run_cli(["-i", audio.name])
+
+        self.assertEqual(result, 1)
+        self.assertIn("unsupported input extension", stderr.getvalue())
 
     def test_parser_accepts_inputs_and_overrides(self):
         args = build_parser().parse_args(

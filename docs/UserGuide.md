@@ -65,6 +65,8 @@ This is where your pending tasks live.
 
 - **+ Add Files**: Select individual videos.
 - **+ Add Folder**: Select a directory for batch processing.
+- **Supported inputs**: MP4, MKV, MOV, AVI, WebM, M4V, MPG/MPEG/MPE, M2P/M2V/M2TS/MTS, TS, VOB, WMV, ASF, FLV/F4V, OGG/OGV/OGM, RM/RMVB, 3GP/3G2, DIVX, DV, MXF, Y4M, GIF, WebP, and APNG. The same video-only policy applies to the GUI, CLI, and web API.
+- **Video-only**: Audio-only files such as MP3, M4A, WAV, FLAC, and AAC are rejected. A video container with only an audio stream is rejected after probing. Actual codec support still depends on the bundled FFmpeg build.
 - **Recursive**: Toggle this to include videos in subfolders.
 - **Clear List**: Empty the entire queue.
 - **Right-Click**: Access the context menu to move items UP, DOWN, to the TOP, to the BOTTOM, or REMOVE them. If an item is **Cancelled**, you can also select **Enqueue Again** to reset it and move it to the end of the list.
@@ -74,7 +76,7 @@ This is where your pending tasks live.
 - **Video Codec**: Choose your encoding standard.
 - **Container Format**: Select MP4, MKV, etc.
 - **Audio Codec**: Choose "Copy" to keep original audio or re-encode.
-- **Resolution**: Scale your video to 4K, 1440p, 1080p, 720p, 576p, or 480p, or keep the original.
+- **Resolution**: Scale your video to 4K, 1440p, 1080p, 720p, 576p, or 480p, or keep the original. Presets are bounding boxes matched to the source orientation: 720p is 1280×720 for landscape and 720×1280 for portrait. Aspect ratio is preserved, smaller sources are upscaled, and neither side exceeds the box.
 - **Video Quality**: Select quality presets which adjust the Constant Rate Factor (CRF).
 
 ---
