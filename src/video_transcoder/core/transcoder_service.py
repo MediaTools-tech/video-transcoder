@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Dict, Any, Callable
-import os
 import threading
+import time
 from .transcoder_engine import TranscoderEngine, CONTAINERS
 
 class TranscoderService:
@@ -52,14 +52,22 @@ class TranscoderService:
 
     def stop(self):
         self.stop_event.set()
+        self.pause_event.clear()
+        self.engine.resume_active_process()
 
     def pause(self):
         self.pause_event.set()
+        self.engine.suspend_active_process()
+
+    def resume(self):
+        self.pause_event.clear()
+        self.engine.resume_active_process()
 
     def cleanup(self):
         """Signal stop and terminate any active engine subprocess for clean exit"""
         self.stop_event.set()
-        self.pause_event.set()
+        self.pause_event.clear()
+        self.engine.resume_active_process()
         self.engine.terminate_active_process()
 
     def _worker(
@@ -74,7 +82,13 @@ class TranscoderService:
             for i, input_path in enumerate(input_files):
                 if self.stop_event.is_set():
                     break
-                
+
+                while self.pause_event.is_set() and not self.stop_event.is_set():
+                    time.sleep(0.1)
+
+                if self.stop_event.is_set():
+                    break
+
                 ui_callback("status", f"Processing {i+1}/{total}: {Path(input_path).name}")
                 ui_callback("update_list_status", (i, "Processing"))
                 
@@ -96,40 +110,32 @@ class TranscoderService:
                     
                     if self.stop_event.is_set():
                         ui_callback("log", f"Cancelled: {input_path}")
-                        self._handle_partial_file(output_path, "_cancelled")
+                        self._remove_partial_file(output_path)
                         ui_callback("update_list_status", (i, "Cancelled"))
                         break
-                    
-                    if self.pause_event.is_set():
-                        ui_callback("log", f"Stopped: {input_path}")
-                        self._handle_partial_file(output_path, "_stopped")
-                        ui_callback("update_list_status", (i, "Stopped"))
-                        break
-                    
+
                     ui_callback("log", f"Finished: {input_path}")
                     ui_callback("update_list_status", (i, "Done"))
                 except Exception as e:
+                    if self.stop_event.is_set():
+                        ui_callback("log", f"Cancelled: {input_path}")
+                        self._remove_partial_file(output_path)
+                        ui_callback("update_list_status", (i, "Cancelled"))
+                        break
                     ui_callback("log", f"Error processing {input_path}: {e}")
                     ui_callback("update_list_status", (i, "Error"))
         finally:
-            reason = "Done"
-            if self.stop_event.is_set():
-                reason = "Cancelled"
-            elif self.pause_event.is_set():
-                reason = "Stopped"
+            reason = "Cancelled" if self.stop_event.is_set() else "Done"
 
             ui_callback("finished", reason)
             self.is_active = False
 
-    def _handle_partial_file(self, file_path: str, suffix: str):
-        """Rename partial file if it exists"""
+    def _remove_partial_file(self, file_path: str):
+        """Delete a cancelled partial output file if it exists."""
         try:
             p = Path(file_path)
             if p.exists():
-                new_path = p.parent / f"{p.stem}{suffix}{p.suffix}"
-                # Ensure unique rename if suffix already exists
-                final_path = self._get_unique_path(new_path)
-                os.rename(str(p), final_path)
-                print(f"Renamed partial file to: {final_path}")
+                p.unlink()
+                print(f"Deleted partial file: {p}")
         except Exception as e:
-            print(f"Error renaming partial file: {e}")
+            print(f"Error deleting partial file: {e}")

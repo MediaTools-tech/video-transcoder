@@ -27,7 +27,7 @@ MediaTools Video Transcoder is a streamlined GUI for FFmpeg that simplifies comp
 
 - **Enhanced Queue Management**: New right-click context menu with **"Enqueue Again"** for Done/Error items.
 - **Intelligent Logic**: Smart duplicate file detection and collision handling.
-- **Stop & Cancel Refinements**: Interrupted tasks now rename partial output files with `_stopped` or `_cancelled` suffixes for clarity.
+- **Pause, Resume & Cancel**: **PAUSE** suspends the active FFmpeg process without restarting it; **START/RESUME CONVERSION** continues from the same point while the app remains open. **CANCEL** stops the batch and deletes its partial output.
 - **Dynamic CRF Labels**: The quality dropdown now shows actual CRF values specifically matched to each video codec (e.g., AV1 shows CRF-34).
 - **Robust Audio Copy**: Improved mapping system ensuring original audio can be copied across more container formats with smart fallbacks.
 - **Bug Fixes**: Resolved `ui_callback` errors and improved FFmpeg command transparency with console logging.
@@ -70,7 +70,7 @@ MediaTools Video Transcoder is a streamlined GUI for FFmpeg that simplifies comp
 1. Launch MediaTools Video Transcoder.
 2. Click **+ Add Files** or **+ Add Folder** to populate your queue.
 3. Select your desired **Video Codec**, **Container**, and **Resolution**.
-4. Click **START CONVERSION**. Use **CANCEL** to stop a batch or **EXIT** to close the app.
+4. Click **START/RESUME CONVERSION**. Use **PAUSE** to suspend the current job, then **START/RESUME CONVERSION** to continue. Use **CANCEL** to stop the batch or **EXIT** to close the app.
 5. Your files will be saved to the configured output directory (Browse to change).
 
 ## Command-Line Usage

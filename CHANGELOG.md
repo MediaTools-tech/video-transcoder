@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added true in-session pause/resume in the desktop GUI: **PAUSE** suspends the
+  active FFmpeg process, and **START/RESUME CONVERSION** resumes it without restarting the
+  encode or creating a `_1` output. Closing the app still terminates the paused
+  process.
 - Added a shared video-only input policy across the GUI, CLI, API, and engine.
   Supported inputs now include MPG/MPEG, RealMedia, OGV, GIF, WebP, APNG, and
   other common video containers. Audio-only inputs are rejected after probing.
@@ -31,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added focused FFmpeg tool, CLI, and API tests.
 
 ### Changed
+- Renamed **STOP** to **PAUSE** and **START CONVERSION** to
+  **START/RESUME CONVERSION**; **CANCEL** remains the destructive stop action.
+- Paused jobs no longer create `_stopped` files. Cancelled jobs now delete their
+  partial output instead of renaming it with a `_cancelled` suffix.
 - Sharpening remains None/Light/Medium/Strong/Adaptive; the user guide now
   documents that Light/Medium/Strong use `unsharp` and Adaptive uses `cas`.
 - Switched the Docker runtime to Alpine with Alpine's FFmpeg package, reducing

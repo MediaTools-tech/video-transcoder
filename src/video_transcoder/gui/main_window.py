@@ -383,10 +383,10 @@ class VideoTranscoderApp:
         ctrl_frame = ttk.Frame(main_container)
         ctrl_frame.pack(fill=tk.X, pady=10)
         
-        self.start_btn = ttk.Button(ctrl_frame, text="START CONVERSION", command=self.start_transcoding, padding=10)
+        self.start_btn = ttk.Button(ctrl_frame, text="START/RESUME CONVERSION", command=self.start_transcoding, padding=10)
         self.start_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
         
-        self.pause_btn = ttk.Button(ctrl_frame, text="STOP", command=self.pause_transcoding, state=tk.DISABLED, padding=10)
+        self.pause_btn = ttk.Button(ctrl_frame, text="PAUSE", command=self.pause_transcoding, state=tk.DISABLED, padding=10)
         self.pause_btn.pack(side=tk.LEFT, padx=5)
         
         self.cancel_btn = ttk.Button(ctrl_frame, text="CANCEL", command=self.stop_transcoding, state=tk.DISABLED, padding=10)
@@ -888,6 +888,13 @@ class VideoTranscoderApp:
         self.engine.ffprobe_path = self.ffmpeg_tool.get_ffprobe_command()
 
     def start_transcoding(self):
+        if self.service.is_active:
+            if self.service.pause_event.is_set():
+                self.resume_transcoding()
+            else:
+                messagebox.showinfo("Batch Active", "A transcoding batch is already in progress.")
+            return
+
         items = self.tree.get_children()
         if not items:
             messagebox.showwarning("No Input", "Please add files to the list.")
@@ -966,26 +973,36 @@ class VideoTranscoderApp:
         thread = self.service.start_batch(files, self.out_dir_var.get(), options, ui_callback)
         if thread is None:
             messagebox.showinfo("Batch Active", "A transcoding batch is already in progress.")
-            self._finished()
 
     def pause_transcoding(self):
+        if not self.service.is_active:
+            return
         self.service.pause()
-        self.status_var.set("Stopping...")
+        self.status_var.set("Paused")
+        self.start_btn.config(state=tk.NORMAL)
+        self.pause_btn.config(state=tk.DISABLED)
+
+    def resume_transcoding(self):
+        self.service.resume()
+        self.status_var.set("Resuming...")
+        self.start_btn.config(state=tk.DISABLED)
+        self.pause_btn.config(state=tk.NORMAL)
 
     def stop_transcoding(self):
         self.service.stop()
-        self.status_var.set("Stopping...")
+        self.status_var.set("Cancelling...")
+        self.start_btn.config(state=tk.DISABLED)
+        self.pause_btn.config(state=tk.DISABLED)
+        self.cancel_btn.config(state=tk.DISABLED)
 
     def _finished(self, reason="Done"):
-        self.start_btn.config(state=tk.NORMAL)
-        self.pause_btn.config(state=tk.DISABLED)
+        self.start_btn.config(state=tk.NORMAL, text="START/RESUME CONVERSION")
+        self.pause_btn.config(state=tk.DISABLED, text="PAUSE")
         self.cancel_btn.config(state=tk.DISABLED)
         self.progress_var.set(0)
         
         status_msg = "Finished"
-        if reason == "Stopped":
-            status_msg = "Stopped"
-        elif reason == "Cancelled":
+        if reason == "Cancelled":
             status_msg = "Cancelled"
 
         self.status_var.set(status_msg)

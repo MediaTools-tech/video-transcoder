@@ -86,8 +86,19 @@ This is where your pending tasks live.
 1. **Add Media**: Use the buttons to populate the list.
 2. **Configure**: Select your codec and container.
 3. **Pick Output**: Verify the "Output Directory" path.
-4. **Start**: Click **START CONVERSION**.
-5. **Monitor**: Watch the status bar and overall progress.
+4. **Start**: Click **START/RESUME CONVERSION**.
+5. **Monitor**: Watch the status bar and overall progress. Use **PAUSE** to suspend the current file and **START/RESUME CONVERSION** to continue it.
+
+### Pause and Resume
+
+Click **PAUSE** to suspend the active FFmpeg process. The output file stays at its
+current size and progress; click **START/RESUME CONVERSION** to continue the same
+process from the same point. Pause/resume is in-session only: if the app is closed
+while paused, the suspended process is terminated and the next run starts that
+file again from the beginning.
+
+Use **CANCEL** to stop the batch instead of pausing it. The current partial output
+is deleted rather than kept; it cannot be resumed.
 
 ### Automatic Naming
 
@@ -205,11 +216,11 @@ A: Transcoding is a CPU-intensive task. Higher codecs like H.265 or AV1 take sig
 **Q: Where can I find my finished videos?**  
 A: Click the **Downloads Folder** button in the app to open the output directory in File Explorer.
 
-**Q: How do I stop or exit?**  
-A: Click **CANCEL** to stop the current batch, or **EXIT** to safely close the application.
+**Q: How do I pause, cancel, or exit?**
+A: Click **PAUSE** to suspend the current file and **START/RESUME CONVERSION** to continue it while the app stays open. Click **CANCEL** to stop the batch, or **EXIT** to safely close the application.
 
 **Q: The app closed unexpectedly!**  
-A: Don't worry. Your queue is saved. Re-open the app, and you can resume where you left off.
+A: Your queue is saved. Re-open the app and pending files reload; an in-progress file restarts from the beginning because a suspended FFmpeg process cannot survive an app restart.
 
 ---
 

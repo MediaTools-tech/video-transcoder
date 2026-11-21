@@ -3,6 +3,7 @@ import re
 import os
 import json
 import platform
+import signal
 import threading
 from typing import Dict, Tuple, Optional, Callable, Any
 
@@ -28,6 +29,42 @@ SHARPENING_FILTERS = {
     "strong": "unsharp=5:5:1.5:5:5:0.0",
     "adaptive": "cas=0.5"
 }
+
+
+def _set_windows_process_suspended(pid: int, suspend: bool) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    process_suspend_resume = 0x0800
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    ntdll = ctypes.WinDLL("ntdll")
+
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(process_suspend_resume, False, pid)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    try:
+        function = ntdll.NtSuspendProcess if suspend else ntdll.NtResumeProcess
+        function.argtypes = [wintypes.HANDLE]
+        function.restype = ctypes.c_long
+        status = function(handle)
+        if status != 0:
+            action = "suspend" if suspend else "resume"
+            raise OSError(f"Unable to {action} process {pid}: NTSTATUS {status}")
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _set_process_suspended(pid: int, suspend: bool) -> None:
+    if platform.system() == "Windows":
+        _set_windows_process_suspended(pid, suspend)
+    else:
+        os.kill(pid, signal.SIGSTOP if suspend else signal.SIGCONT)
 
 SHARPENING_LABELS = {
     "none": "None",
@@ -112,6 +149,7 @@ class TranscoderEngine:
         self.ffmpeg_path = ffmpeg_path
         self.ffprobe_path = ffprobe_path
         self.active_process = None
+        self._process_suspended = False
         self._lock = threading.Lock()
 
     def get_video_info(self, input_path: str) -> Optional[Dict]:
@@ -120,6 +158,7 @@ class TranscoderEngine:
             self.ffprobe_path, "-v", "quiet", "-print_format", "json",
             "-show_streams", "-show_format", str(input_path)
         ]
+        process = None
         try:
             # Creation flags for Windows to hide console window
             process_kwargs = {
@@ -131,11 +170,12 @@ class TranscoderEngine:
                 process_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
                 
             with self._lock:
-                self.active_process = subprocess.Popen(cmd, **process_kwargs)
+                process = subprocess.Popen(cmd, **process_kwargs)
+                self.active_process = process
             
-            stdout, stderr = self.active_process.communicate()
+            stdout, stderr = process.communicate()
             
-            if self.active_process.returncode != 0:
+            if process.returncode != 0:
                 return None
                 
             return json.loads(stdout)
@@ -144,7 +184,9 @@ class TranscoderEngine:
             return None
         finally:
             with self._lock:
-                self.active_process = None
+                if process is not None and self.active_process is process:
+                    self.active_process = None
+                    self._process_suspended = False
 
     @staticmethod
     def has_video_stream(video_info: Optional[Dict]) -> bool:
@@ -437,13 +479,17 @@ class TranscoderEngine:
             # No longer using startupinfo
 
         with self._lock:
-            self.active_process = subprocess.Popen(cmd, **process_kwargs)
-        
-        for line in self.active_process.stdout:
-            # Check stop/pause events
-            if (stop_event and stop_event.is_set()) or (pause_event and pause_event.is_set()):
+            process = subprocess.Popen(cmd, **process_kwargs)
+            self.active_process = process
+            self._process_suspended = False
+
+        if pause_event and pause_event.is_set():
+            self.suspend_active_process()
+
+        for line in process.stdout:
+            if stop_event and stop_event.is_set():
                 self.terminate_active_process()
-                print("Transcoding stopped/paused by user.")
+                print("Transcoding stopped by user.")
                 return
 
             if duration > 0:
@@ -451,19 +497,59 @@ class TranscoderEngine:
                 if prog is not None and progress_callback:
                     progress_callback(prog, line.strip())
 
-        self.active_process.wait()
+        process.wait()
         
-        return_code = self.active_process.returncode
+        return_code = process.returncode
         with self._lock:
-            self.active_process = None
+            if self.active_process is process:
+                self.active_process = None
+                self._process_suspended = False
 
         if return_code != 0:
             raise Exception(f"FFmpeg failed with return code {return_code}")
+
+    def suspend_active_process(self) -> bool:
+        """Suspend the active subprocess without terminating it."""
+        with self._lock:
+            process = self.active_process
+            if process is None or process.poll() is not None:
+                return False
+            if self._process_suspended:
+                return True
+            try:
+                _set_process_suspended(process.pid, True)
+            except Exception as e:
+                print(f"Error suspending process: {e}")
+                return False
+            self._process_suspended = True
+            return True
+
+    def resume_active_process(self) -> bool:
+        """Resume a suspended subprocess if one is active."""
+        with self._lock:
+            process = self.active_process
+            if process is None or process.poll() is not None:
+                return False
+            if not self._process_suspended:
+                return True
+            try:
+                _set_process_suspended(process.pid, False)
+            except Exception as e:
+                print(f"Error resuming process: {e}")
+                return False
+            self._process_suspended = False
+            return True
 
     def terminate_active_process(self):
         """Forcefully kill the currently active subprocess"""
         with self._lock:
             if self.active_process and self.active_process.poll() is None:
+                if self._process_suspended:
+                    try:
+                        _set_process_suspended(self.active_process.pid, False)
+                    except Exception as e:
+                        print(f"Error resuming process before termination: {e}")
+                    self._process_suspended = False
                 try:
                     self.active_process.terminate()
                     try:

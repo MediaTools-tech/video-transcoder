@@ -153,5 +153,36 @@ class SharpeningTest(unittest.TestCase):
         self.assertIn("CAS", SHARPENING_LABELS["adaptive"])
 
 
+class ProcessPauseTest(unittest.TestCase):
+    class FakeProcess:
+        pid = 4321
+
+        def poll(self):
+            return None
+
+    def setUp(self):
+        self.engine = TranscoderEngine("ffmpeg", "ffprobe")
+        self.engine.active_process = self.FakeProcess()
+
+    def test_suspend_and_resume_active_process(self):
+        with patch(
+            "video_transcoder.core.transcoder_engine._set_process_suspended"
+        ) as set_suspended:
+            self.assertTrue(self.engine.suspend_active_process())
+            self.assertTrue(self.engine._process_suspended)
+            set_suspended.assert_called_once_with(4321, True)
+
+            self.assertTrue(self.engine.suspend_active_process())
+            set_suspended.assert_called_once_with(4321, True)
+
+            self.assertTrue(self.engine.resume_active_process())
+            self.assertFalse(self.engine._process_suspended)
+            set_suspended.assert_called_with(4321, False)
+
+    def test_suspend_without_active_process_returns_false(self):
+        self.engine.active_process = None
+        self.assertFalse(self.engine.suspend_active_process())
+
+
 if __name__ == "__main__":
     unittest.main()
